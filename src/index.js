@@ -1,348 +1,429 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import './index.css';
-import { Board } from './board.js';
+import { Board, initialSqClasses, initialBoard, stalemateBoard } from './board.js';
+import { flipBoard, convertToStandard, convertToFen, convertFromFEN } from './notation.js';
+import { Knight, Bishop, Rook, Queen } from './piece.js';
 
-// class Piece extends React.Component {
-//     constructor(props) {
-//         super(props);
-//     }
+/* Scrolls to bottom of move-history div */
+function scrollToBottomHist() {
+    const scrollingElement = document.querySelector('.move-history');
+    scrollingElement.scrollTop = scrollingElement.scrollHeight -
+                                    scrollingElement.clientHeight;
+}
 
-//     // Makes sure piece did not take same-color piece or a king
-//     checkValidCapture(newCol, newRow, board, color) {
-//         let capturedPiece = board[newRow][newCol];
-//         console.log(capturedPiece);
-//         if (capturedPiece) { // doesn't run if capturedPiece is null
-//             if (capturedPiece.props.color === color) { // checks same-color capture
-//                 console.log("yo");
-//                 return false;
-//             }
-        
-//             console.log(capturedPiece.type.name);
-//             if (capturedPiece.type.name === "King") { // no king captures
-//                 return false;
-//             }
-//         }
-//         return true;
-//     }
+// TODO : delete this method from Piece?
+function checkIfInCheck(board, colorToCheck, kingCol, kingRow) {
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+            let piece = board[row][col];
+            if (piece && piece.getColor() !== colorToCheck) {
+                if (piece.isPossibleMove(col, row, kingCol, kingRow, board)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 
-//     isPossibleMove(oldX, oldY, newCol, newRow, board, color) { // TODO : make oldX and oldY props
-//         return this.checkValidCapture(newCol, newRow, board, color);
-//     }
+/* Checks if castle was legal - did not move through a check */
+function checkLegalCastle(oldCol, oldRow, col, row, newSquares, 
+                          playerTurn, kingCol, kingRow) 
+{
+    const newCol = col > oldCol ? oldCol+1 : oldCol-1;
+    console.log("newCol" + newCol);
+    console.log(newSquares[oldRow][oldCol].checkLegalMove(
+        oldCol, oldRow, newCol, oldRow, newSquares, 
+        playerTurn, kingCol, kingRow
+    ));
+    return newSquares[oldRow][oldCol].checkLegalMove(
+        oldCol, oldRow, newCol, oldRow, newSquares, 
+        playerTurn, kingCol, kingRow
+    );
+}
 
-//     /* Returns whether a piece (Rook or Queen) jumped over any other pieces when moved sideways */
-//     checkSideJump(oldCol, oldRow, newCol, newRow, board) {
-//         if (oldCol === newCol) { // vertical movement
-//             let movingUp = newRow < oldRow; // checks direction of vertical move
-//             let i = movingUp ? oldRow-1 : oldRow+1;
-//             // condition is > and not >= since last if there is piece on newRow, move is a capture
-//             let condition = movingUp ? i > newRow : i < newRow; 
-//             while (condition) {
-//                 console.log(i);
-//                 console.log(newRow);
-//                 if (board[i][newCol]) { return false; }
-//                 if (movingUp) { i--; }
-//                 else          { i++; }
-//                 condition = movingUp ? i > newRow : i < newRow; // makes sure i hasn't reached newRow
-//             }
-//         }
-//         else if (newRow === oldRow) { // horizontal movement
-//             let movingRight = newCol > oldCol; // checks direction of horizontal move
-//             let i = movingRight ? oldCol+1 : oldCol-1;
-//             let condition = movingRight ? i < newCol : i > newCol;
-//             while (condition) {
-//                 if (board[newRow][i]) { return false; }
-//                 if (movingRight) { i++; }
-//                 else             { i--; }
-//                 condition = movingRight ? i < newCol : i > newCol; // makes sure i hasn't reached newCol
-//             }
-//         }
-//         else { // neither vertical nor horizontal
-//             return false;
-//         }
-//         return true;
-//     }
 
-//     /* Returns whether a piece (Bishop or Queen) jumped over any other pieces when moved diagonally */
-//     checkDiagJump(oldCol, oldRow, newCol, newRow, board) {
-//         if (Math.abs(oldCol-newCol) === Math.abs(oldRow-newRow)) { // valid diagonal movement
-//             let movingUp = newRow < oldRow;
-//             let movingRight = newCol > oldCol;
-//             let rowCount = movingUp ? oldRow-1 : oldRow+1;
-//             let colCount = movingRight ? oldCol+1 : oldCol-1;
-//             // Only need one condition since row and col displacement are same
-//             let condition = movingUp ? rowCount > newRow : rowCount < newRow; 
-//             while (condition) {
-//                 if (board[rowCount][colCount]) { return false; }
-//                 if (movingRight) { colCount++; }
-//                 else             { colCount--; }
-//                 if (movingUp)    { rowCount--; }
-//                 else             { rowCount++; }
-//                 condition = movingUp ? rowCount > newRow : rowCount < newRow;
-//             }
-//         }
-//         else { // not a diagonal movement
-//             return false;
-//         }
-//         return true;
-//     }
-// }
+/* Returns game status: check, checkmate, stalemate, or normal */
+function checkGameStatus(board, colorTurn, kingCol, kingRow) {
+    let check = checkIfInCheck(board, colorTurn, kingCol, kingRow);
+    for (let i = 0; i < 8; i++) {
+        for (let j = 0; j < 8; j++) {
+            const piece = board[i][j];
+            if (piece && piece.getColor() === colorTurn) { // same-color piece
+                const pieceMoves = piece.calculateAllPosMoves(j, i, board);
+                for (const move of pieceMoves) {
+                    if (piece.checkLegalMove(i, j, move[0], move[1], board, colorTurn, kingCol, kingRow)) {
+                        // Legal move available so guranteed no checkmate/stalemate
+                        return check ? 'check' : 'normal';
+                    }
+                }
+            }
+        }
+    }
+    // No possible moves so either checkmate or stalemate
+    return check ? 'checkmate' : 'stalemate';
+}
 
-// class Pawn extends Piece {
-//     constructor(props) {
-//         super(props);
-//         let numMoves = 0;
-//     }
+class Game extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            history: [initialBoard()],
+            moves: [],
+            moveNumber: 1,
+            squareClasses: initialSqClasses(),
+            playerTurn: 'white',
+            whiteKingRow: 7, whiteKingCol: 4,
+            blackKingRow: 0, blackKingCol: 4,
+            currentPiece: null,
+            currentPieceRow: -1, currentPieceCol: -1,
+            whitePromote: false, blackPromote: false,
+            promoteRow: 0, promoteCol: 0,
+            enPessantAvail: false,
+            enPessantRow: 0, enPessantCol: 0, 
+        };
+    }
 
-//     getMoves() {
-//         return this.numMoves;
-//     }
+    handleClick(row, col) {
+        if (!this.state.whitePromote && !this.state.blackPromote) {
+            const newHistory = this.state.history.slice(0, this.state.moveNumber);
+            let board = this.state.history[this.state.moveNumber-1]
+                        .map(a => Object.assign({}, a)); // creates a deep copy
+            let selectedSquare = board[row][col];
 
-//     isPossibleMove(oldCol, oldRow, newCol, newRow, board, color) { // TODO : make oldX and oldY props
-//         if (!super.checkValidCapture(newCol, newRow, board, color)) {
-//             return false; 
-//         }
-//         let oldNewPosPiece = board[newRow][newCol]; // current piece at new pos
+            if (!this.state.currentPiece) { // A piece is clicked on to move
+                // Makes sure square contains a piece and is of right color
+                if (selectedSquare && selectedSquare.getColor() === this.state.playerTurn) {
+                    console.log(selectedSquare.calculateAllPosMoves(col, row, board));
+                    // TODO : below code creates shallow copy, which mutates arrays instead of copies
+                    let newSqClasses = this.state.squareClasses.slice();
+                    newSqClasses[row][col] = 'piece-clicked';
+                    this.setState({ // Makes clicked piece currentPiece
+                        currentPiece: selectedSquare,
+                        currentPieceRow: row, currentPieceCol: col,
+                    });
+                }
+            }
+            else { // A piece is moved to new square
+                let oldRow = this.state.currentPieceRow, oldCol = this.state.currentPieceCol;
+                // TODO : if new piece is same color as current piece, then change current piece
 
-//         // if (movesMade === 0) {
-//         //     // TODO : add first move functionality
-//         // }
-//         if (newCol === oldCol) { 
-//             // Moves pawn up one square - valid if no piece is there
-//             let rightDirection;
-//             if (color === 'white') { rightDirection = newRow===oldRow-1; }
-//             else                   { rightDirection = newRow===oldRow+1; }
-//             return rightDirection && oldNewPosPiece == null;
-//         }
-//         else {
-//             // diagonal move - must be a piece being captured and can't be a King
-//             // TODO : add in checkKingCapture
-//             // TODO : remove capturing pieces of same color
-//             // return oldNewPosPiece !== null && !checkKingCapture(newCol, newRow, board);
-//             let leftDiagonalMove; 
-//             if (color === 'white') {
-//                 leftDiagonalMove = newCol === oldCol-1 && newRow === oldRow-1;
-//             }
-//             else {
-//                 leftDiagonalMove = newCol === oldCol-1 && newRow === oldRow+1;
-//             }
-//             if (leftDiagonalMove) { return oldNewPosPiece !== null; }
+                // Only moves to new square if a new square is selected
+                if (oldRow !== row || oldCol !== col) {
+                    let newSquares = board.slice();
+                    let currentP = this.state.currentPiece;
+                    let kingCol, kingRow; // used to track location of king for checks
 
-//             let rightDiagonalMove;
-//             if (color === 'white') {
-//                 rightDiagonalMove = newCol === oldCol+1 && newRow === oldRow-1; 
-//             }
-//             else {
-//                 rightDiagonalMove = newCol === oldCol+1 && newRow === oldRow+1; 
-//             }
-//             if (rightDiagonalMove) { return oldNewPosPiece !== null; }
+                    if (currentP.constructor.name === 'King') {
+                        kingCol = col;
+                        kingRow = row;
+                    }   
+                    else {
+                        kingCol = this.state.playerTurn === 'black' ? 
+                                    this.state.blackKingCol : this.state.whiteKingCol;
+                        kingRow = this.state.playerTurn === 'black' ? 
+                                    this.state.blackKingRow : this.state.whiteKingRow;
+                    }
 
-//             return false; // no other possible moves
-//         }
-//     }
+                    // Checks if move was legal
+                    let wasLegalMove = 
+                        currentP.isPossibleMove(
+                            oldCol, oldRow, col, row, newSquares, this.state.enPessantAvail,
+                            this.state.enPessantCol, this.state.enPessantRow)
+                        &&
+                        currentP.checkLegalMove(oldCol, oldRow, col, row, newSquares,
+                            this.state.playerTurn, kingCol, kingRow
+                    );
 
-//     // isPossibleMove(oldX, oldY, newX, newY, board) { // TODO : make oldX and oldY props
-//     //     console.log("ipm");
-//     //     let leftDiagonalMove = newX === oldX-1 && newY === oldY-1;
-//     //     let rightDiagonalMove = newX === oldX+1 && newY === oldY-1; 
-//     //     // Piece oldNewPosPiece = board.get(newX, newY);
-//     //     let oldNewPosPiece = board[newX][newY]; // current piece at new pos
+                    // Checks for castling - legal move check is different
+                    if (currentP.constructor.name === 'King' && wasLegalMove 
+                        && (col===oldCol+2 || col===oldCol-2)) 
+                    {
+                        wasLegalMove = checkLegalCastle(
+                            oldCol, oldRow, col, row, newSquares,
+                            this.state.playerTurn, kingCol, kingRow
+                        );
+                    } 
+                    
+                    // TODO : move all this out?
+                    if (wasLegalMove) {
+                        let castlingMade = false;
+                        let castlingSide = '';
+                        let enPessant = false;
+                        let enPessantUsed = false;
 
-//     //     // if (movesMade === 0) {
-//     //     //     // TODO : add first move functionality
-//     //     // }
-//     //     if (newX === oldX && newY === oldY-1) { 
-//     //         // Moves pawn up one square - valid if no piece is there
-//     //         return oldNewPosPiece === null;
-//     //     }
-//     //     else if (leftDiagonalMove || rightDiagonalMove) {
-//     //         // diagonal move - must be a piece being captured and can't be a King
-//     //         // TODO : add in checkKingCapture
-//     //         // return oldNewPosPiece !== null && !checkKingCapture(newX, newY, board);
-//     //         return oldNewPosPiece !== null;
-//     //     }
-//     //     return false; // no other possible moves 
-//     // }
+                        currentP.setFirstMoveMade(true); // Used for pawns and castling
+                        // Checks for castling so rook can be moved as well and updating king square
+                        if (currentP.constructor.name === 'King') {
+                            // TODO : check should be above checking legal move
+                            if (this.state.playerTurn === 'white') {
+                                this.setState({
+                                    whiteKingCol: col, whiteKingRow: row, 
+                                });
+                            }
+                            else {
+                                this.setState({
+                                    blackKingCol: col, blackKingRow: row, 
+                                });
+                            }
+                            if (col === oldCol+2) { // kingside castling
+                                newSquares[row][7].setFirstMoveMade(true);
+                                newSquares[row][5] = newSquares[row][7]; // moves rook
+                                newSquares[row][7] = null;
+                                castlingMade = true;
+                                castlingSide = 'k';
+                            }
+                            else if (col === oldCol-2) { // queenside castling
+                                newSquares[row][0].setFirstMoveMade(true);
+                                newSquares[row][3] = newSquares[row][0]; // moves rook
+                                newSquares[row][0] = null;
+                                castlingMade = true;
+                                castlingSide = 'q';
+                            }
+                        }
+                        // Checks for promotion and en pessant
+                        else if (currentP.constructor.name === 'Pawn') {
+                            if (this.state.playerTurn === 'white') {
+                                if (row === 0) { // white promote
+                                    console.log("white promote");
+                                    this.setState({
+                                        whitePromote: true,
+                                        promoteRow: row, promoteCol: col
+                                    });
+                                }
+                                else if(row === oldRow-2) { // en-pessant-able square
+                                    enPessant = true;
+                                }
+                                // Checks if en-pessant was actually used
+                                else if (col === this.state.enPessantCol && 
+                                    row === this.state.enPessantRow-1 && !newSquares[row][col]) 
+                                {
+                                    enPessantUsed = true;
+                                }
+                            }
+                            if (this.state.playerTurn==='black') {
+                                if (row === 7) { // black promote
+                                    console.log("black promote");
+                                    this.setState({
+                                        blackPromote: true,
+                                        promoteRow: row, promoteCol: col
+                                    });
+                                }
+                                else if(row === oldRow+2) { // en-pessant-able square
+                                    enPessant = true;
+                                }
+                                // Checks if en-pessant was actually used
+                                else if (col === this.state.enPessantCol && 
+                                    row === this.state.enPessantRow+1 && !newSquares[row][col]) 
+                                {
+                                    enPessantUsed = true;
+                                }
+                            }
+                        }
 
-//     render() {
-//         return <img 
-//                     src={require("./Pieces/" + this.props.color + "_pawn.png")} 
-//                     alt={this.props.color + "pawn"}
-//                     // isPossibleMove={(a, b, c, d, e) => this.isPossibleMove(a, b, c, d, e)}
-//                 />;
-//     }
-// }
+                        // Changes state for en-pessant
+                        if (enPessant) {
+                            this.setState({
+                                enPessantAvail: true,
+                                enPessantRow: row, enPessantCol: col, 
+                            });
+                        }
+                        else {
+                            this.setState({
+                                enPessantAvail: false,
+                            });
+                        }
 
-// class Rook extends Piece {
-//     constructor(props) {
-//         super(props);
-//     }
+                        // Checks if en-pessant was actually used
+                        if (enPessantUsed) {
+                            // Removes en-pessant square
+                            newSquares[this.state.enPessantRow][this.state.enPessantCol] = null;
+                        }
 
-//     hello() {
-//         console.log('hello');
-//     }
+                        // Converts move to standard notation
+                        let newMoves = this.state.moves.slice(0, this.state.moveNumber-1);
+                        newMoves.push(convertToStandard(oldCol, oldRow, col, row, board,
+                            false, false, castlingMade, castlingSide, enPessantUsed
+                        ));
 
-//     // TODO : do not remove color - needed to check no capture of same color
-//     isPossibleMove(oldCol, oldRow, newCol, newRow, board, color) {
-//         // TODO : check no king capture
-//         // Checks for valid capture
-//         if (!super.checkValidCapture(newCol, newRow, board, color)) {
-//             return false; 
-//         }
-//         return this.checkSideJump(oldCol, oldRow, newCol, newRow, board);
-//     }
+                        // Moves piece
+                        newSquares[row][col] = currentP;
+                        newSquares[oldRow][oldCol] = null;
 
-//     render() {
-//         return <img 
-//                     src={require("./Pieces/" + this.props.color + "_rook.png")} 
-//                     alt={this.props.color + "rook"}
-//                 />;
-//     }
-// }
+                        // TODO : Prints game status
+                        // TODO : switch below to a method called oppositeTurn
+                        const gameStatTurn = this.state.playerTurn === 'white' ? 'black' : 'white';
+                        const gameStatKingCol = gameStatTurn === 'white' ? this.state.whiteKingCol : this.state.blackKingCol;
+                        const gameStatKingRow = gameStatTurn === 'white' ? this.state.whiteKingRow : this.state.blackKingRow;
+                        console.log(checkGameStatus(
+                            newSquares, gameStatTurn, gameStatKingCol, gameStatKingRow
+                        ));
 
-// class Knight extends Piece {
-//     constructor(props) {
-//         super(props);
-//     }
+                        // Updates history and move number
+                        newHistory.push(newSquares);
+                        let moveNum = this.state.moveNumber;
+                        this.setState({
+                            history: newHistory,
+                            moves: newMoves,
+                            currentPiece: null,
+                            playerTurn: this.state.playerTurn === 'white' ? 'black' : 'white',
+                            moveNumber: moveNum+1
+                        });
 
-//     isPossibleMove(oldCol, oldRow, newCol, newRow, board, color) { // TODO : make oldX and oldY props
-//         // Checks if either x or y-displacement is 2 and other displacement is 1 plus new square is not king
-//         // TODO : add checkKingCapture
-//         // TODO : remove capturing pieces of same color
-//         if (!super.checkValidCapture(newCol, newRow, board, color)) {
-//             return false; 
-//         }
-//         let moveVertical = Math.abs(newCol-oldCol) === 1 && Math.abs(newRow-oldRow) === 2;
-//         let moveHorizontal = Math.abs(newCol-oldCol) === 2 && Math.abs(newRow-oldRow) === 1;
-//         // return !checkKingCapture(newCol, newY, board) && (moveVertical || moveHorizontal);
-//         return moveVertical || moveHorizontal;
-//     }
+                        // TODO : Scrolls move-history down
+                        scrollToBottomHist();
+                    }
 
-//     render() {
-//         return <img 
-//                     src={require("./Pieces/" + this.props.color + "_knight.png")} 
-//                     alt={this.props.color + "knight"}
-//                 />;
-//     }
-// }
+                    else { // Invalid move deselects piece
+                        this.setState({
+                            currentPiece: null
+                        });
+                    }
+                    // Removes piece highlight
+                    let newSqClasses = this.state.squareClasses.slice();
+                    newSqClasses[this.state.currentPieceRow][this.state.currentPieceCol] = 'square';
 
-// class Bishop extends Piece {
-//     constructor(props) {
-//         super(props);
-//     }
+                }
+                else { // Piece was moved to same square
+                    let newSqClasses = this.state.squareClasses.slice();
+                    newSqClasses[row][col] = 'square'; // removes highlight on piece
+                    this.setState({
+                        currentPiece: null
+                    });
+                }
+            }
+        }
+    }
 
-//     isPossibleMove(oldCol, oldRow, newCol, newRow, board, color) {
-//         // TODO : check no king capture
-//         // Checks whether bishop made valid diagonal move
-//         if (!super.checkValidCapture(newCol, newRow, board, color)) {
-//             return false; 
-//         }
-//         return this.checkDiagJump(oldCol, oldRow, newCol, newRow, board);
-//     }
+    /* Handles a promotion click */
+    handlePromoteClick(piece) {
+        const color = this.state.whitePromote ? 'white' : 'black';
+        let newPiece;
+        if      (piece === 'queen')  { newPiece = new Queen(color);  }
+        else if (piece === 'rook')   { newPiece = new Rook(color);   }
+        else if (piece === 'bishop') { newPiece = new Bishop(color); }
+        else if (piece === 'knight') { newPiece = new Knight(color); }
+        let newHist = this.state.history.slice(0, this.state.moveNumber);
+        let board = newHist[newHist.length-1];
+        board[this.state.promoteRow][this.state.promoteCol] = newPiece;
+        // console.log(this.state.history[this.state.moveNumber-1][this.state.promoteRow][this.state.promoteCol]);
 
-//     render() {
-//         return <img 
-//                     src={require("./Pieces/" + this.props.color + "_bishop.png")} 
-//                     alt={this.props.color + "bishop"}
-//                 />;
-//     }
-// }
+        console.log(piece);
+        this.setState({
+            whitePromote: false, blackPromote: false,
+            history: newHist
+        });
+    }
 
-// class Queen extends Piece {
-//     constructor(props) {
-//         super(props);
-//     }
+    /* Goes to a certain move */
+    goto(move) {
+        this.setState({
+            moveNumber: move,
+            playerTurn: (move % 2 === 0) ? 'black' : 'white',
+            // TODO : might also want to update sqClasses to remove any highlights
+            currentPiece: null,
+        });
+    }
 
-//     isPossibleMove(oldCol, oldRow, newCol, newRow, board, color) {
-//         // TODO : check no king capture
-//         // Checks whether queen made side or diag move and calls func
-//         if (!super.checkValidCapture(newCol, newRow, board, color)) {
-//             return false; 
-//         }
-//         if (Math.abs(oldCol-newCol) === Math.abs(oldRow-newRow)) { // diagonal move
-//             return this.checkDiagJump(oldCol, oldRow, newCol, newRow, board);
-//         }
-//         else {
-//             return this.checkSideJump(oldCol, oldRow, newCol, newRow, board);
-//         }
-//     }
+    // TODO : move these to separate file
+    promotionPics(color) {
+        // TODO : add keys
+        let piecePics = [];
+        piecePics.push(new Queen(color).render(() => this.handlePromoteClick('queen')));
+        piecePics.push(new Rook(color).render(() => this.handlePromoteClick('rook')));
+        piecePics.push(new Bishop(color).render(() => this.handlePromoteClick('bishop')));
+        piecePics.push(new Knight(color).render(() => this.handlePromoteClick('knight')));
+        return piecePics;
+    }
 
-//     render() {
-//         return <img 
-//                     src={require("./Pieces/" + this.props.color + "_queen.png")} 
-//                     alt={this.props.color + "queen"}
-//                 />;
-//     }
-// }
+    render() {
+        const moves = this.state.history.map((position, move) => {
+            // console.log(convertToFen(position, (move % 2 === 0) ? 'white' : 'black'));
+            // console.log(position);
+            // const desc = move ? "Go to move " + move : "Go to start";
+            const desc = move ? this.state.moves[move-1] : "Start";
+            // const classN = (move % 2 === 0) ? 'black-move' : 'white-move';
 
-// class King extends Piece {
-//     constructor(props) {
-//         super(props);
-//     }
+            // Scrolls to bottom of div (might fail for first rendering)
+            // try {
+            //     const scrollingElement = document.querySelector('.move-history');
+            //     console.log(scrollingElement);
+            //     scrollingElement.scrollTop = scrollingElement.scrollHeight - 
+            //                                  scrollingElement.clientHeight;
+            // }
+            // catch(e) {}
 
-//     isPossibleMove(oldCol, oldRow, newCol, newRow, board, color) { // TODO : make oldX and oldY props
-//         // Possible moves - King moved 1 square in any direction
-//         // TODO : also add no king capture and no moving next to opponent king
-//         if (!super.checkValidCapture(newCol, newRow, board, color)) {
-//             return false; 
-//         }
-//         return Math.abs(newCol - oldCol) <= 1 && Math.abs(newRow - oldRow) <= 1;
-//     }
+            return (
+                //<li key={move} className={classN}>
+                    <button 
+                        key={move} 
+                        onClick={() => this.goto(move+1)} 
+                        className={'move-button'}
+                        id={desc==='Start' ? 'start-button' : move}
+                    > 
+                        {desc} 
+                    </button>
+                //</li>
+            );
+        });
 
-//     render() {
-//         return <img 
-//                     src={require("./Pieces/" + this.props.color + "_king.png")} 
-//                     alt={this.props.color + "king"}
-//                 />
-//     }
-// }
+        return (
+            <div className='main'>
+                <div className='container'>
+                    <Board 
+                        board={this.state.history[this.state.moveNumber-1]} 
+                        squareClasses={this.state.squareClasses} 
+                        handleClick={(row, col) => this.handleClick(row, col)}
+                    />
+                    <div className='history'>
+                        <h2 className='history-title'>Game History</h2>
+                        <div className='move-history'> {moves} </div>
+                    </div>
+                </div>
 
-// class Game extends React.Component {
-//     constructor(props) {
-//         super(props);
-//         this.state = {
-//             squares: intialBoard(),
-//             playerTurn: 'white',
-//             currentPiece: null,
-//             currentPieceRow: 0, currentPieceCol: 0
-//         };
-//     }
-
-//     render() {
-//         return (
-//             <Board
-//                 squares
-//                 onClick={(row, col) => this.handleClick(row, col)}
-//             />
-//         );
-//     }
-// }
-
-// export { Pawn, Knight, Bishop, Rook, Queen, King, Row };
-
-// class Game extends React.Component {
-//     constructor(props) {
-//         super(props);
-//         this.state = {
-//             history: [{
-                
-//             }]
-//         };
-//     }
-// }
+                {/* <button onClick={() => flipBoard(this.state.history[this.state.moveNumber-1])}>
+                    Flip
+                </button> */}
+                <div 
+                    className={(this.state.whitePromote ? 'visible ' : 'invisible ') + 'promotion'}
+                    key='white-promote'
+                    style={{
+                        left: this.state.promoteCol * 60
+                    }}
+                >
+                    {this.promotionPics("white")}
+                </div>
+                <div 
+                    className={(this.state.blackPromote ? 'visible ' : 'invisible ') + 'promotion black-promote'}
+                    key='black-promote'
+                    style={{
+                        left: this.state.promoteCol * 60,
+                        top: 240
+                    }}
+                >
+                    {this.promotionPics("black")}
+                </div>
+            </div>
+        );
+    }
+}
 
 ReactDOM.render(
-    <Board />,
+    <Game />,
     document.getElementById("root")
 );
 
 
 /**
  * TODO:
- * Highlighting piece to move
- * Castling
- * Promotion
- * Check / checkmate
- * Possible moves / Stalemate
- * Game history / 3-move rep / 50 move rule
+ * Validating check correctly
+ * Board flipping
+ * Standard notation (mostly done)
+ * Numbers on game history
+ * En pessant (done)
+ * Promotion (done)
+ * Checkmate
+ * Possible moves / Stalemate (some bugs)
+ * Game history / 3-move rep / 50 move rule 
  */

@@ -20,18 +20,12 @@ class Piece {
 
     /* Checks if piece took a same-color piece or a king */
     checkValidCapture(newCol, newRow, board) {
-        let capturedPiece;
-        try {
-            capturedPiece = board[newRow][newCol];
+        if (newCol >= 8 || newRow >= 8 || newCol < 0 || newRow < 0) {
+            return false; // out of bounds
         }
-        catch (e) {
-            console.log(e);
-            return false; // newRow is out of bounds for board
-        }
-        if (capturedPiece === undefined) { // newCol is out of bounds for board
-            return false;
-        }
-        else if (capturedPiece) { // doesn't run if capturedPiece is null or undefined
+
+        const capturedPiece = board[newRow][newCol];
+        if (capturedPiece) { // doesn't run if capturedPiece is null or undefined
             if (capturedPiece.getColor() === this.color) { // checks same-color capture
                 return false;
             }
@@ -53,6 +47,8 @@ class Piece {
         let copyBoard = board.map(a => Object.assign({}, a)); // deep copy required
         copyBoard[newRow][newCol] = copyBoard[oldRow][oldCol]
         copyBoard[oldRow][oldCol] = null;
+        console.log(copyBoard);
+        console.log("colorMadeMove" + colorMadeMove);
         return !this.checkIfInCheck(copyBoard, colorMadeMove, kingCol, kingRow);
     }
 
@@ -129,9 +125,65 @@ class Piece {
         }
         return true;
     }
+
+    /* Used to calculate all possible moves for rook and queen */
+    rookCalcAllPosMoves(col, row, board) {
+        let posMoves = [
+            [col+1, row],
+            [col-1, row],
+            [col, row+1],
+            [col, row-1]
+        ];
+        let actualPosMoves = [];
+        for (let i = 3; i >= 0; i--) {
+            let c = posMoves[i][0], r=posMoves[i][1];
+            // console.log("c" + c);
+            // console.log("r" + r);
+            while (this.isPossibleMove(col, row, c, r, board)) {
+                // console.log("c" + c);
+                // console.log("r" + r);
+                actualPosMoves.push([c, r]);
+                if      (c > col) { c++; }
+                else if (c < col) { c--; }
+                if      (r > row) { r++; }
+                else if (r < row) { r--; }
+            }
+        }
+        return actualPosMoves;
+    }
+
+    /* Used to calculate all possible moves for bishop and queen */
+    bishopCalcAllPosMoves(col, row, board) {
+        let posMoves = [
+            [col+1, row+1],
+            [col+1, row-1],
+            [col-1, row+1],
+            [col-1, row-1]
+        ]
+        let actualPosMoves = [];
+        for (let i = 3; i >= 0; i--) {
+            let c = posMoves[i][0], r=posMoves[i][1];
+            // console.log("c" + c);
+            // console.log("r" + r);
+            while (this.isPossibleMove(col, row, c, r, board)) {
+                // console.log("c" + c);
+                // console.log("r" + r);
+                actualPosMoves.push([c, r]);
+                if      (c > col) { c++; }
+                else if (c < col) { c--; }
+                if      (r > row) { r++; }
+                else if (r < row) { r--; }
+            }
+        }
+        return actualPosMoves;
+    }
 }
 
 class Pawn extends Piece {
+    getFENcode() {
+        return this.color === 'white' ? 'P' : 'p'
+    }
+
     /* Generates an array of all possible moves */
     calculateAllPosMoves(col, row, board) {
         let posNeg = this.getColor() === 'white' ? -1 : 1;
@@ -145,15 +197,17 @@ class Pawn extends Piece {
         let actualPosMoves = [];
         for (let i = possibleMoves.length-1; i >= 0; i--) {
             let currentCheck = possibleMoves[i]; 
-            console.log(currentCheck);
-            if (this.isPossibleMove(col, row, currentCheck[0], currentCheck[1], board)) {
+            if (currentCheck[0] < 8 && currentCheck[1] < 8 &&
+                this.isPossibleMove(col, row, currentCheck[0], currentCheck[1], board)) 
+            {
                 actualPosMoves.push(currentCheck);
             }
         }
         return actualPosMoves;
     }
 
-    isPossibleMove(oldCol, oldRow, newCol, newRow, board) {
+    isPossibleMove(oldCol, oldRow, newCol, newRow, board, enPessantAvail,
+        enPessantCol, enPessantRow) {
         if (!super.checkValidCapture(newCol, newRow, board)) {
             return false; 
         }
@@ -176,13 +230,22 @@ class Pawn extends Piece {
         else {
             // diagonal move - must be a piece being captured and can't be a King
             let leftDiagonalMove; 
+            let properEnPessant;
+            if (enPessantAvail) {
+                if (this.getColor() === 'white') {
+                    properEnPessant = newCol === enPessantCol && newRow === enPessantRow-1;
+                }
+                else {
+                    properEnPessant = newCol === enPessantCol && newRow === enPessantRow+1;
+                }
+            }
             if (this.getColor() === 'white') {
                 leftDiagonalMove = newCol === oldCol-1 && newRow === oldRow-1;
             }
             else {
                 leftDiagonalMove = newCol === oldCol-1 && newRow === oldRow+1;
             }
-            if (leftDiagonalMove) { return oldNewPosPiece !== null; }
+            if (leftDiagonalMove) { return oldNewPosPiece !== null || properEnPessant; }
 
             let rightDiagonalMove;
             if (this.getColor() === 'white') {
@@ -191,44 +254,28 @@ class Pawn extends Piece {
             else {
                 rightDiagonalMove = newCol === oldCol+1 && newRow === oldRow+1; 
             }
-            if (rightDiagonalMove) { return oldNewPosPiece !== null; }
+            if (rightDiagonalMove) { return oldNewPosPiece !== null || properEnPessant; }
 
             return false; // no other possible moves
         }
     }
 
-    render() {
+    render(onClick = () => {}) {
         return <img 
                     src={require("./Pieces/" + this.getColor() + "_pawn.png")} 
                     alt={this.getColor() + "pawn"}
+                    onClick={() => onClick()}
                 />;
     }
 }
 
 class Rook extends Piece {
+    getFENcode() {
+        return this.color === 'white' ? 'R' : 'r'
+    }
+
     calculateAllPosMoves(col, row, board) {
-        let posMoves = [
-            [col+1, row],
-            [col-1, row],
-            [col, row+1],
-            [col, row-1]
-        ];
-        let actualPosMoves = [];
-        for (let i = 3; i >= 0; i--) {
-            let c = posMoves[i][0], r=posMoves[i][1];
-            console.log("c" + c);
-            console.log("r" + r);
-            while (this.isPossibleMove(col, row, c, r, board)) {
-                console.log("c" + c);
-                console.log("r" + r);
-                actualPosMoves.push([c, r]);
-                if      (c > col) { c++; }
-                else if (c < col) { c--; }
-                if      (r > row) { r++; }
-                else if (r < row) { r--; }
-            }
-        }
-        return actualPosMoves;
+        return this.rookCalcAllPosMoves(col, row, board);
     }
 
     // TODO : do not remove color - needed to check no capture of same color
@@ -236,21 +283,25 @@ class Rook extends Piece {
         // TODO : check no king capture
         // Checks for valid capture
         if (!super.checkValidCapture(newCol, newRow, board)) {
-            console.log("not valid cap");
             return false; 
         }
         return this.checkSideJump(oldCol, oldRow, newCol, newRow, board);
     }
 
-    render() {
+    render(onClick = () => {}) {
         return <img 
                     src={require("./Pieces/" + this.getColor() + "_rook.png")} 
                     alt={this.getColor() + "rook"}
+                    onClick={() => onClick()}
                 />;
     }
 }
 
 class Knight extends Piece {
+    getFENcode() {
+        return this.color === 'white' ? 'N' : 'n'
+    }
+
     calculateAllPosMoves(col, row, board) {
         let posMoves = [
             [col+2, row+1],
@@ -265,11 +316,11 @@ class Knight extends Piece {
         let actualPosMoves = [];
         for (let i = 3; i >= 0; i--) {
             let c = posMoves[i][0], r=posMoves[i][1];
-            console.log("c" + c);
-            console.log("r" + r);
+            // console.log("c" + c);
+            // console.log("r" + r);
             if (this.isPossibleMove(col, row, c, r, board)) {
-                console.log("c" + c);
-                console.log("r" + r);
+                // console.log("c" + c);
+                // console.log("r" + r);
                 actualPosMoves.push([c, r]);
             }
         }
@@ -281,7 +332,6 @@ class Knight extends Piece {
         // TODO : add checkKingCapture
         // TODO : remove capturing pieces of same color
         if (!super.checkValidCapture(newCol, newRow, board)) {
-            console.log("false cap")
             return false; 
         }
         let moveVertical = Math.abs(newCol-oldCol) === 1 && Math.abs(newRow-oldRow) === 2;
@@ -290,38 +340,22 @@ class Knight extends Piece {
         return moveVertical || moveHorizontal;
     }
 
-    render() {
+    render(onClick = () => {}) {
         return <img 
                     src={require("./Pieces/" + this.getColor() + "_knight.png")} 
                     alt={this.getColor() + "knight"}
+                    onClick={() => onClick()}
                 />;
     }
 }
 
 class Bishop extends Piece {
+    getFENcode() {
+        return this.color === 'white' ? 'B' : 'b'
+    }
+
     calculateAllPosMoves(col, row, board) {
-        let posMoves = [
-            [col+1, row+1],
-            [col+1, row-1],
-            [col-1, row+1],
-            [col-1, row-1]
-        ]
-        let actualPosMoves = [];
-        for (let i = 3; i >= 0; i--) {
-            let c = posMoves[i][0], r=posMoves[i][1];
-            console.log("c" + c);
-            console.log("r" + r);
-            while (this.isPossibleMove(col, row, c, r, board)) {
-                console.log("c" + c);
-                console.log("r" + r);
-                actualPosMoves.push([c, r]);
-                if      (c > col) { c++; }
-                else if (c < col) { c--; }
-                if      (r > row) { r++; }
-                else if (r < row) { r--; }
-            }
-        }
-        return actualPosMoves;
+        return this.bishopCalcAllPosMoves(col, row, board);
     }
 
     isPossibleMove(oldCol, oldRow, newCol, newRow, board) {
@@ -333,15 +367,27 @@ class Bishop extends Piece {
         return this.checkDiagJump(oldCol, oldRow, newCol, newRow, board);
     }
 
-    render() {
+    render(onClick = () => {}) {
         return <img 
                     src={require("./Pieces/" + this.getColor() + "_bishop.png")} 
                     alt={this.getColor() + "bishop"}
+                    onClick={() => onClick()}
                 />;
     }
 }
 
 class Queen extends Piece {
+    getFENcode() {
+        return this.color === 'white' ? 'Q' : 'q'
+    }
+
+    // TODO : temporary
+    calculateAllPosMoves(col, row, board) {
+        let sideMoves = this.rookCalcAllPosMoves(col, row, board);
+        let diagMoves = this.bishopCalcAllPosMoves(col, row, board);
+        return sideMoves.concat(diagMoves);
+    }
+
     isPossibleMove(oldCol, oldRow, newCol, newRow, board) {
         // TODO : check no king capture
         // Checks whether queen made side or diag move and calls func
@@ -356,15 +402,25 @@ class Queen extends Piece {
         }
     }
 
-    render() {
+    render(onClick = () => {}) {
         return <img 
                     src={require("./Pieces/" + this.getColor() + "_queen.png")} 
                     alt={this.getColor() + "queen"}
+                    onClick={() => onClick()}
                 />;
     }
 }
 
 class King extends Piece {
+    getFENcode() {
+        return this.color === 'white' ? 'K' : 'k'
+    }
+
+    // TODO : temporary
+    calculateAllPosMoves(col, row, board) {
+        return [];
+    }
+
     isPossibleMove(oldCol, oldRow, newCol, newRow, board) {
         // Possible moves - King moved 1 square in any direction
         // TODO : also add no king capture and no moving next to opponent king
@@ -402,10 +458,11 @@ class King extends Piece {
         return Math.abs(newCol - oldCol) <= 1 && Math.abs(newRow - oldRow) <= 1;
     }
 
-    render() {
+    render(onClick = () => {}) {
         return <img 
                     src={require("./Pieces/" + this.getColor() + "_king.png")} 
                     alt={this.getColor() + "king"}
+                    onClick={() => onClick()}
                 />
     }
 }
