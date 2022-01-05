@@ -30,6 +30,8 @@ function convertToStandard(
         notation = 'x' + notation;
     }
     // Adds piece code e.g. B for bishop
+    console.log('pieceMoved');
+    console.log(pieceMoved);
     if (pieceMoved.constructor.name !== 'Pawn') { // no prefix letter needed for pawn
         notation = pieceMoved.getFENcode().toUpperCase() + notation;
     }

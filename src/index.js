@@ -46,16 +46,31 @@ function checkLegalCastle(oldCol, oldRow, col, row, newSquares,
 
 /* Returns game status: check, checkmate, stalemate, or normal */
 function checkGameStatus(board, colorTurn, kingCol, kingRow) {
+    console.log("kingcol" + kingCol);
+    console.log("kingrow" + kingRow);
     let check = checkIfInCheck(board, colorTurn, kingCol, kingRow);
     for (let i = 0; i < 8; i++) {
         for (let j = 0; j < 8; j++) {
             const piece = board[i][j];
             if (piece && piece.getColor() === colorTurn) { // same-color piece
+                // console.log('piece');
+                // console.log(piece);
                 const pieceMoves = piece.calculateAllPosMoves(j, i, board);
                 for (const move of pieceMoves) {
-                    if (piece.checkLegalMove(i, j, move[0], move[1], board, colorTurn, kingCol, kingRow)) {
+                    let newKingCol = kingCol, newKingRow = kingRow;
+                    if (piece.constructor.name === 'King') {
+                        console.log('move0' + move[0]);
+                        console.log('move1' + move[1]);
+                        newKingCol = move[0];
+                        newKingRow = move[1];
+                    }
+                    if (piece.checkLegalMove(j, i, move[0], move[1], board, colorTurn, newKingCol, newKingRow)) {
                         // Legal move available so guranteed no checkmate/stalemate
                         return check ? 'check' : 'normal';
+                    }
+                    else {
+                        console.log("kingcol" + newKingCol);
+                        console.log("kingrow" + newKingRow);
                     }
                 }
             }
@@ -70,18 +85,26 @@ class Game extends React.Component {
         super(props);
         this.state = {
             history: [initialBoard()],
+            // history: [stalemateBoard()],
+            gameOver: false, gameStatus: '',
             moves: [],
             moveNumber: 1,
             squareClasses: initialSqClasses(),
             playerTurn: 'white',
             whiteKingRow: 7, whiteKingCol: 4,
             blackKingRow: 0, blackKingCol: 4,
+            // whiteKingRow: 1, whiteKingCol: 4,
+            // blackKingRow: 0, blackKingCol: 0,
+
             currentPiece: null,
             currentPieceRow: -1, currentPieceCol: -1,
             whitePromote: false, blackPromote: false,
             promoteRow: 0, promoteCol: 0,
             enPessantAvail: false,
             enPessantRow: 0, enPessantCol: 0, 
+            fiftyMoveRuleCounter: 0,
+            whiteKingSideCastle: true, whiteQueenSideCastle: true,
+            blackKingSideCastle: true, blackQueenSideCastle: true,
         };
     }
 
@@ -95,7 +118,9 @@ class Game extends React.Component {
             if (!this.state.currentPiece) { // A piece is clicked on to move
                 // Makes sure square contains a piece and is of right color
                 if (selectedSquare && selectedSquare.getColor() === this.state.playerTurn) {
-                    console.log(selectedSquare.calculateAllPosMoves(col, row, board));
+                    // console.log(selectedSquare.calculateAllPosMoves(col, row, board));
+                    // TODO : make a method calculateAllLegalMoves
+                    let posMoves = selectedSquare.calculateAllPosMoves(col, row, board);
                     // TODO : below code creates shallow copy, which mutates arrays instead of copies
                     let newSqClasses = this.state.squareClasses.slice();
                     newSqClasses[row][col] = 'piece-clicked';
@@ -152,6 +177,8 @@ class Game extends React.Component {
                         let castlingSide = '';
                         let enPessant = false;
                         let enPessantUsed = false;
+                        let wasPawnMove = false;
+                        let wasCapture = newSquares[row][col];
 
                         currentP.setFirstMoveMade(true); // Used for pawns and castling
                         // Checks for castling so rook can be moved as well and updating king square
@@ -184,6 +211,8 @@ class Game extends React.Component {
                         }
                         // Checks for promotion and en pessant
                         else if (currentP.constructor.name === 'Pawn') {
+                            wasPawnMove = true;
+                            const direction = this.state.playerTurn === 'white' ? -1 : 1;
                             if (this.state.playerTurn === 'white') {
                                 if (row === 0) { // white promote
                                     console.log("white promote");
@@ -192,17 +221,8 @@ class Game extends React.Component {
                                         promoteRow: row, promoteCol: col
                                     });
                                 }
-                                else if(row === oldRow-2) { // en-pessant-able square
-                                    enPessant = true;
-                                }
-                                // Checks if en-pessant was actually used
-                                else if (col === this.state.enPessantCol && 
-                                    row === this.state.enPessantRow-1 && !newSquares[row][col]) 
-                                {
-                                    enPessantUsed = true;
-                                }
                             }
-                            if (this.state.playerTurn==='black') {
+                            else if (this.state.playerTurn==='black') {
                                 if (row === 7) { // black promote
                                     console.log("black promote");
                                     this.setState({
@@ -210,15 +230,16 @@ class Game extends React.Component {
                                         promoteRow: row, promoteCol: col
                                     });
                                 }
-                                else if(row === oldRow+2) { // en-pessant-able square
-                                    enPessant = true;
-                                }
-                                // Checks if en-pessant was actually used
-                                else if (col === this.state.enPessantCol && 
-                                    row === this.state.enPessantRow+1 && !newSquares[row][col]) 
-                                {
-                                    enPessantUsed = true;
-                                }
+                            }
+                            // Checks for en pessant available (pawn moved 2 squares up)
+                            if (row === oldRow+2*direction) {
+                                enPessant = true;
+                            }
+                            // Checks if en pessant was actually used
+                            else if (this.state.enPessantAvail && col === this.state.enPessantCol && 
+                                row === this.state.enPessantRow+direction && !newSquares[row][col]) 
+                            {
+                                enPessantUsed = true;
                             }
                         }
 
@@ -247,6 +268,22 @@ class Game extends React.Component {
                             false, false, castlingMade, castlingSide, enPessantUsed
                         ));
 
+                        // 50-move rule - checks for capture or pawn move
+                        if (wasPawnMove || wasCapture || enPessantUsed) {
+                            this.setState({
+                                fiftyMoveRuleCounter: 0
+                            });
+                        }
+                        else {
+                            const newCounter = this.state.fiftyMoveRuleCounter+0.5;
+                            this.setState({
+                                fiftyMoveRuleCounter: newCounter
+                            });
+                            if (newCounter >= 50) {
+                                console.log("DRAW BY 50-MOVE RULE!!");
+                            }
+                        }
+
                         // Moves piece
                         newSquares[row][col] = currentP;
                         newSquares[oldRow][oldCol] = null;
@@ -256,19 +293,20 @@ class Game extends React.Component {
                         const gameStatTurn = this.state.playerTurn === 'white' ? 'black' : 'white';
                         const gameStatKingCol = gameStatTurn === 'white' ? this.state.whiteKingCol : this.state.blackKingCol;
                         const gameStatKingRow = gameStatTurn === 'white' ? this.state.whiteKingRow : this.state.blackKingRow;
-                        console.log(checkGameStatus(
+                        const newStatus = checkGameStatus(
                             newSquares, gameStatTurn, gameStatKingCol, gameStatKingRow
-                        ));
+                        );
+                        const newGameOver = (newStatus === 'checkmate' || newStatus === 'stalemate');
 
                         // Updates history and move number
                         newHistory.push(newSquares);
-                        let moveNum = this.state.moveNumber;
                         this.setState({
                             history: newHistory,
+                            gameOver: newGameOver, gameStatus: newStatus,
                             moves: newMoves,
                             currentPiece: null,
                             playerTurn: this.state.playerTurn === 'white' ? 'black' : 'white',
-                            moveNumber: moveNum+1
+                            moveNumber: this.state.moveNumber+1
                         });
 
                         // TODO : Scrolls move-history down
@@ -404,9 +442,51 @@ class Game extends React.Component {
                 >
                     {this.promotionPics("black")}
                 </div>
+                <div className={(this.state.gameOver ? 'visible' : 'invisible') + ' game-status'}
+                >
+                    {printEndStatus(this.state.gameStatus, this.state.playerTurn)}
+                    {/* {getWinner(this.state.gameStatus, this.state.playerTurn)}
+                    {this.state.gameStatus} */}
+                    {/* {if (this.game.gameStatus === 'checkmate') } */}
+                </div>
+                <button onClick={
+                    () => this.setState({gameOver: false})
+                }>X</button>
             </div>
         );
     }
+}
+
+function printEndStatus(gameStatus, playerTurn) {
+    if (gameStatus === 'checkmate') {
+        return `Checkmate!\n${capitalize(oppositeTurn(playerTurn))} wins`;
+    }
+    else {
+        return `Draw by ${gameStatus}`;
+    }
+    // else if (gameStatus === 'fifty-move-rule') {
+    //     return "Draw by 50-move rule";
+    // }
+    // else if (gameStatus === 'fifty-move-rule') {
+    //     return "Draw by 50-move rule";
+    // }
+}
+
+// function getWinner(status, turn) {
+//     if (status === 'checkmate') {
+//         return capitalize(oppositeTurn(turn)) + ' wins by ';
+//     }
+//     else {
+//         return 'Draw by';
+//     }
+// }
+
+function capitalize(word) {
+    return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function oppositeTurn(turn) {
+    return turn === 'white' ? 'black' : 'white';
 }
 
 ReactDOM.render(
@@ -423,7 +503,9 @@ ReactDOM.render(
  * Numbers on game history
  * En pessant (done)
  * Promotion (done)
- * Checkmate
- * Possible moves / Stalemate (some bugs)
- * Game history / 3-move rep / 50 move rule 
+ * Checkmate / stalemate (done)
+ * Possible moves (some bugs)
+ * Game history (bugs) 
+ * 3-move rep 
+ * 50 move rule (done)
  */

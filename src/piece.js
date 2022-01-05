@@ -47,6 +47,10 @@ class Piece {
         let copyBoard = board.map(a => Object.assign({}, a)); // deep copy required
         copyBoard[newRow][newCol] = copyBoard[oldRow][oldCol]
         copyBoard[oldRow][oldCol] = null;
+        console.log('newRow' + newRow);
+        console.log('newCol' + newCol);
+        console.log('oldRow' + oldRow);
+        console.log('oldCol' + oldCol);
         console.log(copyBoard);
         console.log("colorMadeMove" + colorMadeMove);
         return !this.checkIfInCheck(copyBoard, colorMadeMove, kingCol, kingRow);
@@ -186,6 +190,7 @@ class Pawn extends Piece {
 
     /* Generates an array of all possible moves */
     calculateAllPosMoves(col, row, board) {
+        // TODO : add en-pessant
         let posNeg = this.getColor() === 'white' ? -1 : 1;
         let possibleMoves = 
             [
@@ -198,6 +203,7 @@ class Pawn extends Piece {
         for (let i = possibleMoves.length-1; i >= 0; i--) {
             let currentCheck = possibleMoves[i]; 
             if (currentCheck[0] < 8 && currentCheck[1] < 8 &&
+                currentCheck[0] >= 0 && currentCheck[1] >= 0 &&
                 this.isPossibleMove(col, row, currentCheck[0], currentCheck[1], board)) 
             {
                 actualPosMoves.push(currentCheck);
@@ -314,7 +320,7 @@ class Knight extends Piece {
             [col-1, row-2],
         ]
         let actualPosMoves = [];
-        for (let i = 3; i >= 0; i--) {
+        for (let i = posMoves.length-1; i >= 0; i--) {
             let c = posMoves[i][0], r=posMoves[i][1];
             // console.log("c" + c);
             // console.log("r" + r);
@@ -416,9 +422,29 @@ class King extends Piece {
         return this.color === 'white' ? 'K' : 'k'
     }
 
-    // TODO : temporary
+    // TODO : add castling
     calculateAllPosMoves(col, row, board) {
-        return [];
+        let possibleMoves = [
+            [col+1, row+1],
+            [col+1, row],
+            [col+1, row-1],
+            [col-1, row+1],
+            [col-1, row],
+            [col-1, row-1],
+            [col, row+1],
+            [col, row-1],
+        ];
+        let actualPosMoves = [];
+        for (let i = possibleMoves.length-1; i >= 0; i--) {
+            let currentCheck = possibleMoves[i]; 
+            if (currentCheck[0] < 8 && currentCheck[1] < 8 &&
+                currentCheck[0] >= 0 && currentCheck[1] >= 0 &&
+                this.isPossibleMove(col, row, currentCheck[0], currentCheck[1], board)) 
+            {
+                actualPosMoves.push(currentCheck);
+            }
+        }
+        return actualPosMoves;
     }
 
     isPossibleMove(oldCol, oldRow, newCol, newRow, board) {

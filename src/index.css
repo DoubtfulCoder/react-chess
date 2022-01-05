@@ -119,6 +119,23 @@
     visibility: hidden;
 }
 
+.game-status {
+    display: flex;
+    justify-content: center;
+    align-content: center;
+    flex-direction: column;
+    border-radius: 10px;
+    width: 240px;
+    height: 241px;
+    font-size: 40px;
+    text-align: center;
+    color: white;
+    background-color: green;
+    position: absolute;
+    left: 121px;
+    top: 120px;
+}
+
 /* CSS */
 /* .button-2 {
   background-color: rgba(51, 51, 51, 0.05);
