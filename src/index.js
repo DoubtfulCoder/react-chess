@@ -394,6 +394,11 @@ class Game extends React.Component {
 
             return (
                 //<li key={move} className={classN}>
+                // <div style={{display: 'flex', flexDirection: 'row'}}>
+                <div>
+                    <span>
+                        {(move % 2 !== 0) ? `${(move+1)/2}.` : '' /* prints move number for white moves */}
+                    </span>
                     <button 
                         key={move} 
                         onClick={() => this.goto(move+1)} 
@@ -402,7 +407,7 @@ class Game extends React.Component {
                     > 
                         {desc} 
                     </button>
-                //</li>
+                </div>
             );
         });
 
